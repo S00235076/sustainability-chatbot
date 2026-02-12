@@ -84,7 +84,7 @@ export default function ChatPage() {
         <Card className="shadow-2xl border border-border/50">
           <CardHeader className="border-b bg-card/90 backdrop-blur">
             <CardTitle className="text-xl font-bold">
-              Sustainability AI Assistant 🌱
+              Household Sustainability AI Assistant 🏡
             </CardTitle>
             <p className="text-sm text-muted-foreground">
               Ask me anything about Household Sustainability
@@ -121,7 +121,7 @@ export default function ChatPage() {
       sendMessage(e);     
     }
   }}
-  placeholder="Ask something..."
+  placeholder="Ask me something..."
   className="min-h-[55px] max-h-[120px] resize-none flex-1"
 />
 
