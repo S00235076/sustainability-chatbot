@@ -1,6 +1,9 @@
+// app/api/chat/route.ts
+// Multi-user chat with user-specific RAG
+
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
-import { getRelevantContext, RAG_SYSTEM_PROMPT } from "@/lib/rag-query";
+import { getRelevantContext, RAG_SYSTEM_PROMPT } from "@/lib/rag-query-multiuser";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!, 
@@ -10,21 +13,43 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const messages = body.messages as { role: "user" | "assistant"; content: string }[];
+    const sessionId = body.sessionId as string;
     
-    // Get the last user message
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: "No session ID provided" },
+        { status: 400 }
+      );
+    }
+    
     const lastUserMessage = messages[messages.length - 1].content;
     
-    // Get relevant context from your HTML documents
-    const { context, sources } = await getRelevantContext(lastUserMessage);
+    // Get relevant context from THIS USER's documents
+    const { context, sources } = await getRelevantContext(lastUserMessage, sessionId);
     
-    // Add context to the conversation
+    // Check if user has any documents
+    if (!context || context.trim() === '') {
+      return NextResponse.json({
+        reply: "It looks like you haven't uploaded any documents yet. Please upload some files using the upload button above, and then I'll be able to answer questions based on your documents!",
+        sources: []
+      });
+    }
+    
+    const enhancedSystemPrompt = `${RAG_SYSTEM_PROMPT}
+
+IMPORTANT CITATION RULES:
+1. When answering, cite sources by referring to them as [Source 1], [Source 2], etc.
+2. ONLY cite sources that you actually use in your answer
+3. When you reference information, use the EXACT wording from the source
+4. Each [Source N] corresponds to a specific excerpt
+5. Don't cite unless directly using information from that excerpt`;
+    
     const messagesWithContext = [
-      { role: "system" as const, content: RAG_SYSTEM_PROMPT },
+      { role: "system" as const, content: enhancedSystemPrompt },
       { 
         role: "user" as const, 
-        content: `Context from knowledge base:\n\n${context}\n\nUser question: ${lastUserMessage}` 
+        content: `Context from your documents:\n\n${context}\n\nQuestion: ${lastUserMessage}` 
       },
-      // Include previous conversation for context (last 4 messages)
       ...messages.slice(0, -1).slice(-4),
     ];
     
@@ -36,18 +61,35 @@ export async function POST(req: NextRequest) {
 
     const reply = completion.choices[0]?.message?.content ?? "";
     
-    // Return response with sources
+    // Filter sources: only cited ones
+    const citedSourceIds = new Set<number>();
+    const sourcePattern = /\[Source (\d+)\]/g;
+    let match;
+    
+    while ((match = sourcePattern.exec(reply)) !== null) {
+      citedSourceIds.add(parseInt(match[1]));
+    }
+    
+    const usedSources = sources
+      .map((source, index) => ({
+        id: index + 1,
+        filename: source.filename,
+        excerpt: source.excerpt,
+      }))
+      .filter(source => citedSourceIds.has(source.id));
+    
     return NextResponse.json({ 
       reply,
-      sources 
+      sources: usedSources
     });
     
   } catch (error) {
-    console.error('RAG Error:', error);
-    
-    // If RAG fails, return error
+    console.error('Error:', error);
     return NextResponse.json(
-      { error: 'Failed to process request', reply: 'Sorry, I encountered an error.' },
+      { 
+        error: 'Failed to process request', 
+        reply: 'Sorry, I encountered an error.' 
+      },
       { status: 500 }
     );
   }

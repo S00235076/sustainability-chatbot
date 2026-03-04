@@ -6,9 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "next lint",
     "db:setup": "tsx scripts/setup-database.ts",
-    "db:ingest": "tsx scripts/ingest-html.ts"
+    "db:ingest": "tsx scripts/ingest-html.ts",
+    "db:setup:multiuser": "tsx scripts/setup-database-multiuser.ts",
+    "db:migrate": "tsx scripts/migrate-to-multiuser.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

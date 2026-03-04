@@ -1,5 +1,5 @@
-// lib/rag-query.ts
-// Enhanced RAG with text excerpt citations
+// lib/rag-query-multiuser.ts
+// User-specific RAG with text excerpt citations
 
 import { neon } from '@neondatabase/serverless';
 import OpenAI from 'openai';
@@ -9,7 +9,7 @@ export interface RAGResult {
   sources: Array<{
     filename: string;
     similarity: number;
-    excerpt: string; // The actual text chunk from the document
+    excerpt: string;
   }>;
 }
 
@@ -20,11 +20,11 @@ interface QueryResult {
 }
 
 /**
- * Get relevant context from your HTML documents
- * Returns context and the actual text excerpts used as sources
+ * Get relevant context from a specific user's documents
  */
 export async function getRelevantContext(
   userQuery: string,
+  sessionId: string,
   topK: number = 5
 ): Promise<RAGResult> {
   const databaseUrl = process.env.DATABASE_URL;
@@ -36,6 +36,18 @@ export async function getRelevantContext(
   const sql = neon(databaseUrl);
   const openai = new OpenAI({ apiKey });
   
+  // Get user ID
+  const userResult = await sql`
+    SELECT id FROM users WHERE session_id = ${sessionId}
+  ` as Array<{ id: number }>;
+  
+  if (userResult.length === 0) {
+    // No user found, return empty context
+    return { context: '', sources: [] };
+  }
+  
+  const userId = userResult[0].id;
+  
   // Generate embedding for user's query
   const response = await openai.embeddings.create({
     model: 'text-embedding-3-small',
@@ -43,7 +55,7 @@ export async function getRelevantContext(
   });
   const queryEmbedding = response.data[0].embedding;
   
-  // Find most similar chunks from your documents
+  // Find most similar chunks from THIS USER's documents only
   const results = await sql`
     SELECT 
       dc.chunk_text,
@@ -51,9 +63,15 @@ export async function getRelevantContext(
       1 - (dc.embedding <=> ${JSON.stringify(queryEmbedding)}::vector) as similarity
     FROM document_chunks dc
     JOIN documents d ON dc.document_id = d.id
+    WHERE dc.user_id = ${userId}
     ORDER BY dc.embedding <=> ${JSON.stringify(queryEmbedding)}::vector
     LIMIT ${topK}
   ` as QueryResult[];
+  
+  // If no results, return empty
+  if (results.length === 0) {
+    return { context: '', sources: [] };
+  }
   
   // Format context for LLM with source numbers
   const context = results
@@ -66,23 +84,23 @@ export async function getRelevantContext(
   const sources = results.map((row) => ({
     filename: row.filename,
     similarity: parseFloat(row.similarity),
-    excerpt: row.chunk_text, // Include the actual text chunk
+    excerpt: row.chunk_text,
   }));
   
   return { context, sources };
 }
 
 /**
- * System prompt that ensures AI cites sources and only uses provided context
+ * System prompt for multi-user chatbot
  */
-export const RAG_SYSTEM_PROMPT = `You are a Sustainability AI Assistant that helps with household sustainability questions.
+export const RAG_SYSTEM_PROMPT = `You are an AI Assistant that helps users understand their uploaded documents.
 
 CRITICAL RULES:
 1. Only use information from the provided context to answer questions
 2. Always cite your sources using [Source 1], [Source 2], etc. when stating information
-3. If the context doesn't contain the answer, say "I don't have that information in my knowledge base"
+3. If the context doesn't contain the answer, say "I don't have that information in your uploaded documents"
 4. Do not make up or infer information beyond what's explicitly in the context
 5. Be helpful and specific - mention which document the information comes from
-6. Keep answers practical and actionable
+6. Keep answers practical and based on the user's documents
 
-Focus on household sustainability topics like energy efficiency, waste reduction, water conservation, sustainable living practices, etc.`;
+You are answering based on documents the user has uploaded to their personal knowledge base.`;
