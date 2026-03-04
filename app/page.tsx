@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Upload, FileText, Trash2, X } from "lucide-react";
+import { Upload, FileText, Trash2, X, Moon, Sun } from "lucide-react";
 
 type Source = {
   id: number;
@@ -50,6 +50,7 @@ export default function ChatPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +64,15 @@ export default function ChatPage() {
       fetchDocuments();
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const shouldUseDark = savedTheme ? savedTheme === "dark" : prefersDark;
+
+    document.documentElement.classList.toggle("dark", shouldUseDark);
+    setIsDarkMode(shouldUseDark);
+  }, []);
 
   const fetchDocuments = async () => {
     try {
@@ -193,6 +203,13 @@ export default function ChatPage() {
     }
   };
 
+  const toggleDarkMode = () => {
+    const nextIsDark = !isDarkMode;
+    setIsDarkMode(nextIsDark);
+    document.documentElement.classList.toggle("dark", nextIsDark);
+    localStorage.setItem("theme", nextIsDark ? "dark" : "light");
+  };
+
   return (
     <main className="min-h-screen p-6 bg-gradient-to-b from-background to-muted flex justify-center">
       <div className="w-full max-w-4xl flex gap-4">
@@ -209,6 +226,18 @@ export default function ChatPage() {
                 </p>
               </div>
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleDarkMode}
+                  className="gap-2">
+                  {isDarkMode ? (
+                    <Sun className="h-4 w-4" />
+                  ) : (
+                    <Moon className="h-4 w-4" />
+                  )}
+                  {isDarkMode ? "Light" : "Dark"}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
