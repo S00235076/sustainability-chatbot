@@ -385,8 +385,8 @@ function ChatBubble({ message }: { message: ChatMessage }) {
                     [Source {source.id}] {source.filename}
                   </div>
                   <div className="text-muted-foreground italic border-l-2 border-border pl-3 mt-2">
-                    "{source.excerpt.substring(0, 200)}
-                    {source.excerpt.length > 200 ? "..." : ""}"
+                    {source.excerpt.substring(0, 200)}
+                    {source.excerpt.length > 200 ? "..." : ""}
                   </div>
                 </div>
               ))}

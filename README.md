@@ -34,3 +34,31 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## CI/CD (GitHub Actions + Vercel)
+
+This repo includes:
+
+- `.github/workflows/ci.yml`: runs lint and build on pull requests and pushes to `master`/`main`.
+- `.github/workflows/cd-vercel.yml`: deploys preview builds for pull requests and production builds for pushes to `master`/`main`.
+
+### Required GitHub Secrets
+
+Add these in your GitHub repo under `Settings -> Secrets and variables -> Actions`:
+
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+
+You can get `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` by linking locally once:
+
+```bash
+npx vercel link
+```
+
+Then read values from `.vercel/project.json`.
+
+### Recommended branch flow
+
+- Create feature branch -> open PR -> CI runs and preview deploy runs.
+- Merge PR into `master` (or `main`) -> production deploy runs.
