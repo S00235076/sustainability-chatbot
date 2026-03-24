@@ -6,12 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Upload, FileText, Trash2, X, Moon, Sun } from "lucide-react";
+import { Upload, FileText, Trash2, X, Leaf, Heart, DollarSign } from "lucide-react";
 
 type Source = {
   id: number;
   filename: string;
   excerpt: string;
+  category: string;
 };
 
 type ChatMessage = {
@@ -25,11 +26,25 @@ type ChatMessage = {
 type Document = {
   id: number;
   filename: string;
+  category: string;
   file_type: string;
   file_size: number;
   created_at: string;
   chunk_count: number;
 };
+
+type Category = {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  color: string;
+};
+
+const CATEGORIES: Category[] = [
+  { id: "sustainability", name: "Sustainability", icon: <Leaf className="h-4 w-4" />, color: "bg-green-500" },
+  { id: "health", name: "Health & Wellness", icon: <Heart className="h-4 w-4" />, color: "bg-red-500" },
+  { id: "finance", name: "Finance & Budgeting", icon: <DollarSign className="h-4 w-4" />, color: "bg-blue-500" },
+];
 
 export default function ChatPage() {
   const [sessionId] = useState(() => {
@@ -44,13 +59,14 @@ export default function ChatPage() {
     return "";
   });
 
+  const [activeCategory, setActiveCategory] = useState("sustainability");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [isUploading, setIsUploading] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,25 +78,31 @@ export default function ChatPage() {
   useEffect(() => {
     if (sessionId) {
       fetchDocuments();
+      fetchCategoryCounts();
     }
-  }, [sessionId]);
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const shouldUseDark = savedTheme ? savedTheme === "dark" : prefersDark;
-
-    document.documentElement.classList.toggle("dark", shouldUseDark);
-    setIsDarkMode(shouldUseDark);
-  }, []);
+  }, [sessionId, activeCategory]);
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch(`/api/documents?sessionId=${sessionId}`);
+      const response = await fetch(`/api/documents?sessionId=${sessionId}&category=${activeCategory}`);
       const data = await response.json();
       setDocuments(data.documents || []);
     } catch (error) {
       console.error("Error fetching documents:", error);
+    }
+  };
+
+  const fetchCategoryCounts = async () => {
+    try {
+      const response = await fetch(`/api/documents`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = await response.json();
+      setCategoryCounts(data.categories || {});
+    } catch (error) {
+      console.error("Error fetching category counts:", error);
     }
   };
 
@@ -94,6 +116,7 @@ export default function ChatPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("sessionId", sessionId);
+      formData.append("category", activeCategory);
 
       const response = await fetch("/api/upload", {
         method: "POST",
@@ -103,16 +126,15 @@ export default function ChatPage() {
       const data = await response.json();
 
       if (data.success) {
-        // Refresh documents list
         await fetchDocuments();
+        await fetchCategoryCounts();
         
-        // Show success message in chat
         setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: `✅ Successfully uploaded "${data.filename}"! It has been processed into ${data.chunks} chunks. You can now ask me questions about this document.`,
+            content: `✅ Successfully uploaded "${data.filename}" to ${activeCategory}! Processed into ${data.chunks} chunks.`,
             timestamp: Date.now(),
           },
         ]);
@@ -143,9 +165,15 @@ export default function ChatPage() {
         method: "DELETE",
       });
       await fetchDocuments();
+      await fetchCategoryCounts();
     } catch (error) {
       console.error("Error deleting document:", error);
     }
+  };
+
+  const handleCategorySwitch = (categoryId: string) => {
+    setActiveCategory(categoryId);
+    setMessages([]); // Clear messages when switching categories
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -174,6 +202,7 @@ export default function ChatPage() {
             content: m.content,
           })),
           sessionId,
+          category: activeCategory,
         }),
       });
 
@@ -203,48 +232,68 @@ export default function ChatPage() {
     }
   };
 
-  const toggleDarkMode = () => {
-    const nextIsDark = !isDarkMode;
-    setIsDarkMode(nextIsDark);
-    document.documentElement.classList.toggle("dark", nextIsDark);
-    localStorage.setItem("theme", nextIsDark ? "dark" : "light");
-  };
+  const activeC = CATEGORIES.find((c) => c.id === activeCategory);
 
   return (
     <main className="min-h-screen p-6 bg-gradient-to-b from-background to-muted flex justify-center">
-      <div className="w-full max-w-4xl flex gap-4">
+      <div className="w-full max-w-5xl flex gap-4">
+        {/* Category Sidebar */}
+        <Card className="w-64 shadow-2xl border border-border/50">
+          <CardHeader className="border-b bg-card/90 backdrop-blur pb-3">
+            <CardTitle className="text-lg">Categories</CardTitle>
+          </CardHeader>
+          <CardContent className="p-2">
+            <div className="space-y-2">
+              {CATEGORIES.map((category) => (
+                <button
+                  key={category.id}
+                  onClick={() => handleCategorySwitch(category.id)}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-3 rounded-lg transition-all",
+                    activeCategory === category.id
+                      ? "bg-primary text-primary-foreground shadow-md"
+                      : "hover:bg-accent"
+                  )}>
+                  <div className={cn("p-2 rounded-full", category.color, "bg-opacity-20")}>
+                    {category.icon}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-medium text-sm">{category.name}</div>
+                    <div className="text-xs opacity-70">
+                      {categoryCounts[category.id] || 0} files
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Main Chat */}
         <Card className="flex-1 shadow-2xl border border-border/50">
           <CardHeader className="border-b bg-card/90 backdrop-blur">
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-xl font-bold">
-                  AI Document Assistant 📚
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Upload files and ask questions about them
-                </p>
+              <div className="flex items-center gap-3">
+                <div className={cn("p-2 rounded-full", activeC?.color, "bg-opacity-20")}>
+                  {activeC?.icon}
+                </div>
+                <div>
+                  <CardTitle className="text-xl font-bold">
+                    {activeC?.name} Assistant
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    {documents.length} files in this category
+                  </p>
+                </div>
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleDarkMode}
-                  className="gap-2">
-                  {isDarkMode ? (
-                    <Sun className="h-4 w-4" />
-                  ) : (
-                    <Moon className="h-4 w-4" />
-                  )}
-                  {isDarkMode ? "Light" : "Dark"}
-                </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowDocuments(!showDocuments)}
                   className="gap-2">
                   <FileText className="h-4 w-4" />
-                  {documents.length} Files
+                  Files
                 </Button>
                 <Button
                   variant="default"
@@ -271,9 +320,11 @@ export default function ChatPage() {
               <div className="space-y-4">
                 {messages.length === 0 && (
                   <div className="text-center text-muted-foreground py-12">
-                    <Upload className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <div className={cn("mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center", activeC?.color, "bg-opacity-20")}>
+                      {activeC?.icon}
+                    </div>
                     <p className="text-lg font-medium">
-                      Upload documents to get started
+                      Upload {activeC?.name} documents
                     </p>
                     <p className="text-sm mt-2">
                       Supported: .txt, .md, .html files
@@ -308,7 +359,7 @@ export default function ChatPage() {
                     sendMessage(e);
                   }
                 }}
-                placeholder="Ask about your documents..."
+                placeholder={`Ask about your ${activeC?.name} documents...`}
                 className="min-h-[55px] max-h-[120px] resize-none flex-1"
                 disabled={documents.length === 0}
               />
@@ -319,11 +370,11 @@ export default function ChatPage() {
           </CardContent>
         </Card>
 
-        {/* Documents Sidebar */}
+        {/* Documents Panel */}
         {showDocuments && (
           <Card className="w-80 shadow-2xl border border-border/50">
             <CardHeader className="border-b bg-card/90 backdrop-blur flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Your Documents</CardTitle>
+              <CardTitle className="text-lg">{activeC?.name} Files</CardTitle>
               <Button
                 variant="ghost"
                 size="sm"
@@ -335,7 +386,7 @@ export default function ChatPage() {
               <ScrollArea className="h-[600px]">
                 {documents.length === 0 ? (
                   <div className="p-6 text-center text-muted-foreground text-sm">
-                    No documents uploaded yet
+                    No documents in this category yet
                   </div>
                 ) : (
                   <div className="p-2 space-y-2">
@@ -414,8 +465,8 @@ function ChatBubble({ message }: { message: ChatMessage }) {
                     [Source {source.id}] {source.filename}
                   </div>
                   <div className="text-muted-foreground italic border-l-2 border-border pl-3 mt-2">
-                    {source.excerpt.substring(0, 200)}
-                    {source.excerpt.length > 200 ? "..." : ""}
+                    "{source.excerpt.substring(0, 200)}
+                    {source.excerpt.length > 200 ? "..." : ""}"
                   </div>
                 </div>
               ))}

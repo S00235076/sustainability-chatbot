@@ -1,10 +1,9 @@
 // app/api/chat/route.ts
-// Multi-user chat with user-specific RAG
+// Category-aware chat API
 
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { getRelevantContext, RAG_SYSTEM_PROMPT } from "@/lib/rag-query-multiuser";
-
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!, 
 });
@@ -14,6 +13,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const messages = body.messages as { role: "user" | "assistant"; content: string }[];
     const sessionId = body.sessionId as string;
+    const category = body.category as string || "sustainability";
     
     if (!sessionId) {
       return NextResponse.json(
@@ -24,18 +24,18 @@ export async function POST(req: NextRequest) {
     
     const lastUserMessage = messages[messages.length - 1].content;
     
-    // Get relevant context from THIS USER's documents
-    const { context, sources } = await getRelevantContext(lastUserMessage, sessionId);
+    const { context, sources } = await getRelevantContext(lastUserMessage, sessionId, category);
     
-    // Check if user has any documents
     if (!context || context.trim() === '') {
       return NextResponse.json({
-        reply: "It looks like you haven't uploaded any documents yet. Please upload some files using the upload button above, and then I'll be able to answer questions based on your documents!",
+        reply: `It looks like you haven't uploaded any documents in the "${category}" category yet. Please upload some files to this category first!`,
         sources: []
       });
     }
     
     const enhancedSystemPrompt = `${RAG_SYSTEM_PROMPT}
+
+Current category: ${category}
 
 IMPORTANT CITATION RULES:
 1. When answering, cite sources by referring to them as [Source 1], [Source 2], etc.
@@ -48,7 +48,7 @@ IMPORTANT CITATION RULES:
       { role: "system" as const, content: enhancedSystemPrompt },
       { 
         role: "user" as const, 
-        content: `Context from your documents:\n\n${context}\n\nQuestion: ${lastUserMessage}` 
+        content: `Context from your ${category} documents:\n\n${context}\n\nQuestion: ${lastUserMessage}` 
       },
       ...messages.slice(0, -1).slice(-4),
     ];
@@ -61,7 +61,6 @@ IMPORTANT CITATION RULES:
 
     const reply = completion.choices[0]?.message?.content ?? "";
     
-    // Filter sources: only cited ones
     const citedSourceIds = new Set<number>();
     const sourcePattern = /\[Source (\d+)\]/g;
     let match;
@@ -75,6 +74,7 @@ IMPORTANT CITATION RULES:
         id: index + 1,
         filename: source.filename,
         excerpt: source.excerpt,
+        category: source.category,
       }))
       .filter(source => citedSourceIds.has(source.id));
     
