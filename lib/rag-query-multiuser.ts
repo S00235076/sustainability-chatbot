@@ -1,6 +1,3 @@
-// lib/rag-query-with-categories.ts
-// Category-aware RAG queries
-
 import { neon } from '@neondatabase/serverless';
 import OpenAI from 'openai';
 

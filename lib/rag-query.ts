@@ -1,6 +1,3 @@
-// lib/rag-query.ts
-// Enhanced RAG with text excerpt citations
-
 import { neon } from '@neondatabase/serverless';
 import OpenAI from 'openai';
 
@@ -9,7 +6,7 @@ export interface RAGResult {
   sources: Array<{
     filename: string;
     similarity: number;
-    excerpt: string; // The actual text chunk from the document
+    excerpt: string; 
   }>;
 }
 
@@ -19,10 +16,7 @@ interface QueryResult {
   similarity: string;
 }
 
-/**
- * Get relevant context from your HTML documents
- * Returns context and the actual text excerpts used as sources
- */
+
 export async function getRelevantContext(
   userQuery: string,
   topK: number = 5
