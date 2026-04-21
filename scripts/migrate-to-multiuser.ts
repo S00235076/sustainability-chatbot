@@ -47,7 +47,7 @@ async function migrateDatabase() {
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         filename VARCHAR(255) NOT NULL,
         content TEXT NOT NULL,
-        file_type VARCHAR(50),
+        file_type VARCHAR(255),
         file_size INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )

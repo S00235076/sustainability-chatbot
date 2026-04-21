@@ -1,6 +1,3 @@
-// app/api/documents/route.ts
-// Get/delete documents with category filtering
-
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 

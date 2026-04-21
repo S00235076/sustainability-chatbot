@@ -1,10 +1,9 @@
-// app/api/upload/route.ts
-// Handle file uploads with category support
-
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import OpenAI from "openai";
 import * as cheerio from "cheerio";
+import mammoth from "mammoth";
+import { PDFParse } from "pdf-parse";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -36,6 +35,18 @@ function extractTextFromHtml(html: string): string {
 
 function extractTextFromPlainText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+async function extractTextFromDocx(buffer: Buffer): Promise<string> {
+  const result = await mammoth.extractRawText({ buffer });
+  return result.value.replace(/\s+/g, ' ').trim();
+}
+
+async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  const parser = new PDFParse({ data: buffer });
+  const result = await parser.getText();
+  await parser.destroy();
+  return result.text.replace(/\s+/g, ' ').trim();
 }
 
 function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
@@ -71,13 +82,18 @@ export async function POST(req: NextRequest) {
     const fileType = file.type;
     const fileSize = file.size;
     
-    const fileContent = await file.text();
-    
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
     let extractedText = "";
     if (fileType === "text/html" || filename.endsWith(".html") || filename.endsWith(".htm")) {
-      extractedText = extractTextFromHtml(fileContent);
+      extractedText = extractTextFromHtml(buffer.toString("utf-8"));
+    } else if (filename.endsWith(".docx") || fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      extractedText = await extractTextFromDocx(buffer);
+    } else if (filename.endsWith(".pdf") || fileType === "application/pdf") {
+      extractedText = await extractTextFromPdf(buffer);
     } else {
-      extractedText = extractTextFromPlainText(fileContent);
+      extractedText = extractTextFromPlainText(buffer.toString("utf-8"));
     }
     
     if (!extractedText || extractedText.length < 10) {
@@ -97,34 +113,32 @@ export async function POST(req: NextRequest) {
     const documentId = docResult[0].id;
     
     const chunks = chunkText(extractedText);
-    
-    let processedChunks = 0;
-    
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      
-      const embeddingResponse = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: chunk,
-      });
-      
-      const embedding = embeddingResponse.data[0].embedding;
-      
-      // Store chunk with category
-      await sql`
-        INSERT INTO document_chunks (document_id, user_id, category, chunk_text, chunk_index, embedding)
-        VALUES (
-          ${documentId}, 
-          ${userId}, 
-          ${category},
-          ${chunk}, 
-          ${i}, 
-          ${JSON.stringify(embedding)}
-        )
-      `;
-      
-      processedChunks++;
-    }
+
+    // Batch all chunk embeddings in a single API call
+    const embeddingResponse = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: chunks,
+    });
+    const embeddings = embeddingResponse.data.map((e) => e.embedding);
+
+    // Insert all chunks in parallel
+    await Promise.all(
+      chunks.map((chunk, i) =>
+        sql`
+          INSERT INTO document_chunks (document_id, user_id, category, chunk_text, chunk_index, embedding)
+          VALUES (
+            ${documentId},
+            ${userId},
+            ${category},
+            ${chunk},
+            ${i},
+            ${JSON.stringify(embeddings[i])}
+          )
+        `
+      )
+    );
+
+    const processedChunks = chunks.length;
     
     return NextResponse.json({
       success: true,

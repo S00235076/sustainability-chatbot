@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Upload, FileText, Trash2, X, Leaf, Heart, DollarSign } from "lucide-react";
+import { Upload, FileText, Trash2, X, Leaf, Heart, DollarSign, Plus, Eye, ExternalLink } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 type Source = {
   id: number;
@@ -38,12 +39,22 @@ type Category = {
   name: string;
   icon: React.ReactNode;
   color: string;
+  isCustom?: boolean;
 };
 
-const CATEGORIES: Category[] = [
+const DEFAULT_CATEGORIES: Category[] = [
   { id: "sustainability", name: "Sustainability", icon: <Leaf className="h-4 w-4" />, color: "bg-green-500" },
   { id: "health", name: "Health & Wellness", icon: <Heart className="h-4 w-4" />, color: "bg-red-500" },
   { id: "finance", name: "Finance & Budgeting", icon: <DollarSign className="h-4 w-4" />, color: "bg-blue-500" },
+];
+
+const CUSTOM_CATEGORY_COLORS = [
+  "bg-purple-500",
+  "bg-orange-500",
+  "bg-pink-500",
+  "bg-indigo-500",
+  "bg-yellow-500",
+  "bg-teal-500",
 ];
 
 export default function ChatPage() {
@@ -59,6 +70,7 @@ export default function ChatPage() {
     return "";
   });
 
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [activeCategory, setActiveCategory] = useState("sustainability");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -67,6 +79,9 @@ export default function ChatPage() {
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [isUploading, setIsUploading] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [viewingDocument, setViewingDocument] = useState<{ id: number; filename: string; content: string; file_type: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,8 +94,45 @@ export default function ChatPage() {
     if (sessionId) {
       fetchDocuments();
       fetchCategoryCounts();
+      loadCustomCategories();
     }
   }, [sessionId, activeCategory]);
+
+  const loadCustomCategories = async () => {
+    try {
+      // Load locally stored custom categories (persists before docs are uploaded)
+      const storedRaw = localStorage.getItem(`customCategories_${sessionId}`);
+      const stored: Array<{ id: string; name: string }> = storedRaw ? JSON.parse(storedRaw) : [];
+
+      // Also fetch from DB to pick up categories from other sessions / after reload
+      const response = await fetch(`/api/categories?sessionId=${sessionId}`);
+      const data = await response.json();
+
+      const storedIds = new Set(stored.map((c) => c.id));
+      const dbExtra = (data.categories || [])
+        .filter((cat: any) => !DEFAULT_CATEGORIES.find((dc) => dc.id === cat.category) && !storedIds.has(cat.category))
+        .map((cat: any) => ({
+          id: cat.category,
+          name: cat.category.split('-').map((word: string) =>
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' '),
+        }));
+
+      const allCustom = [...stored, ...dbExtra];
+
+      const customCats: Category[] = allCustom.map((cat, index) => ({
+        id: cat.id,
+        name: cat.name,
+        icon: <FileText className="h-4 w-4" />,
+        color: CUSTOM_CATEGORY_COLORS[index % CUSTOM_CATEGORY_COLORS.length],
+        isCustom: true,
+      }));
+
+      setCategories([...DEFAULT_CATEGORIES, ...customCats]);
+    } catch (error) {
+      console.error("Error loading custom categories:", error);
+    }
+  };
 
   const fetchDocuments = async () => {
     try {
@@ -106,6 +158,94 @@ export default function ChatPage() {
     }
   };
 
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+
+    try {
+      const response = await fetch("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          sessionId, 
+          categoryName: newCategoryName 
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Persist to localStorage so it survives reloads and useEffect re-runs
+        const storedRaw = localStorage.getItem(`customCategories_${sessionId}`);
+        const stored: Array<{ id: string; name: string }> = storedRaw ? JSON.parse(storedRaw) : [];
+        if (!stored.find((c) => c.id === data.categoryId)) {
+          stored.push({ id: data.categoryId, name: newCategoryName });
+          localStorage.setItem(`customCategories_${sessionId}`, JSON.stringify(stored));
+        }
+
+        const newCategory: Category = {
+          id: data.categoryId,
+          name: newCategoryName,
+          icon: <FileText className="h-4 w-4" />,
+          color: CUSTOM_CATEGORY_COLORS[categories.length % CUSTOM_CATEGORY_COLORS.length],
+          isCustom: true
+        };
+
+        setCategories([...categories, newCategory]);
+        setActiveCategory(data.categoryId);
+        setShowAddCategory(false);
+        setNewCategoryName("");
+      }
+    } catch (error) {
+      console.error("Error adding category:", error);
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    try {
+      await fetch(`/api/categories?sessionId=${sessionId}&categoryId=${categoryId}`, {
+        method: "DELETE",
+      });
+
+      // Remove from localStorage
+      const storedRaw = localStorage.getItem(`customCategories_${sessionId}`);
+      const stored: Array<{ id: string; name: string }> = storedRaw ? JSON.parse(storedRaw) : [];
+      localStorage.setItem(
+        `customCategories_${sessionId}`,
+        JSON.stringify(stored.filter((c) => c.id !== categoryId))
+      );
+
+      const remaining = categories.filter((c) => c.id !== categoryId);
+      setCategories(remaining);
+
+      if (activeCategory === categoryId) {
+        setActiveCategory(remaining[0]?.id ?? "sustainability");
+        setMessages([]);
+      }
+
+      await fetchCategoryCounts();
+    } catch (error) {
+      console.error("Error deleting category:", error);
+    }
+  };
+
+  const viewDocument = async (docId: number, filename: string) => {
+    try {
+      const response = await fetch(`/api/documents/view?sessionId=${sessionId}&documentId=${docId}`);
+      const data = await response.json();
+      
+      if (data.document) {
+        setViewingDocument({
+          id: docId,
+          filename: filename,
+          content: data.document.content,
+          file_type: data.document.file_type || filename.split('.').pop() || 'txt',
+        });
+      }
+    } catch (error) {
+      console.error("Error viewing document:", error);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -128,6 +268,7 @@ export default function ChatPage() {
       if (data.success) {
         await fetchDocuments();
         await fetchCategoryCounts();
+        await loadCustomCategories();
         
         setMessages((prev) => [
           ...prev,
@@ -173,7 +314,7 @@ export default function ChatPage() {
 
   const handleCategorySwitch = (categoryId: string) => {
     setActiveCategory(categoryId);
-    setMessages([]); // Clear messages when switching categories
+    setMessages([]);
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -192,47 +333,82 @@ export default function ChatPage() {
     setInput("");
     setIsLoading(true);
 
+    const aiMsgId = crypto.randomUUID();
+    let streamStarted = false;
+
+    const addError = (msg: string) => {
+      if (streamStarted) {
+        setMessages((prev) => prev.map((m) => m.id === aiMsgId ? { ...m, content: msg } : m));
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: "assistant", content: msg, timestamp: Date.now() },
+        ]);
+      }
+    };
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: newMessages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
           sessionId,
           category: activeCategory,
         }),
       });
 
-      const data = await response.json();
+      if (!response.body) throw new Error("No response body");
 
-      const aiMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.reply ?? "",
-        timestamp: Date.now(),
-        sources: data.sources || [],
-      };
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      setMessages((prev) => [...prev, aiMessage]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          if (!part.startsWith("data:")) continue;
+          let data: { text?: string; sources?: Source[]; done?: boolean; error?: string };
+          try { data = JSON.parse(part.slice(5)); } catch { continue; }
+
+          if (!streamStarted) {
+            setMessages((prev) => [
+              ...prev,
+              { id: aiMsgId, role: "assistant", content: "", timestamp: Date.now() },
+            ]);
+            setIsLoading(false);
+            streamStarted = true;
+          }
+
+          if (data.text) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === aiMsgId ? { ...m, content: m.content + data.text } : m)
+            );
+          }
+          if (data.done) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === aiMsgId ? { ...m, sources: data.sources ?? [] } : m)
+            );
+          }
+          if (data.error) {
+            addError("⚠️ Error: Could not reach the AI server.");
+          }
+        }
+      }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "⚠️ Error: Could not reach the AI server.",
-          timestamp: Date.now(),
-        },
-      ]);
+      addError("⚠️ Error: Could not reach the AI server.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const activeC = CATEGORIES.find((c) => c.id === activeCategory);
+  const activeC = categories.find((c) => c.id === activeCategory);
 
   return (
     <main className="min-h-screen p-6 bg-gradient-to-b from-background to-muted flex justify-center">
@@ -240,32 +416,85 @@ export default function ChatPage() {
         {/* Category Sidebar */}
         <Card className="w-64 shadow-2xl border border-border/50">
           <CardHeader className="border-b bg-card/90 backdrop-blur pb-3">
-            <CardTitle className="text-lg">Categories</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">Categories</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAddCategory(!showAddCategory)}
+                className="h-8 w-8 p-0">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-2">
-            <div className="space-y-2">
-              {CATEGORIES.map((category) => (
-                <button
-                  key={category.id}
-                  onClick={() => handleCategorySwitch(category.id)}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg transition-all",
-                    activeCategory === category.id
-                      ? "bg-primary text-primary-foreground shadow-md"
-                      : "hover:bg-accent"
-                  )}>
-                  <div className={cn("p-2 rounded-full", category.color, "bg-opacity-20")}>
-                    {category.icon}
+            {showAddCategory && (
+              <div className="mb-3 p-2 border rounded-lg">
+                <Input
+                  placeholder="Category name..."
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleAddCategory();
+                    }
+                  }}
+                  className="mb-2"
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleAddCategory} className="flex-1">
+                    Add
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowAddCategory(false);
+                      setNewCategoryName("");
+                    }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            <ScrollArea className="h-[500px]">
+              <div className="space-y-2">
+                {categories.map((category) => (
+                  <div key={category.id} className="relative group">
+                    <button
+                      onClick={() => handleCategorySwitch(category.id)}
+                      className={cn(
+                        "w-full flex items-center gap-3 p-3 rounded-lg transition-all",
+                        activeCategory === category.id
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "hover:bg-accent"
+                      )}>
+                      <div className={cn("p-2 rounded-full", category.color, "bg-opacity-20")}>
+                        {category.icon}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-medium text-sm">{category.name}</div>
+                        <div className="text-xs opacity-70">
+                          {categoryCounts[category.id] || 0} files
+                        </div>
+                      </div>
+                    </button>
+                    {category.isCustom && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCategory(category.id);
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/20 text-destructive"
+                        title="Delete category">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-medium text-sm">{category.name}</div>
-                    <div className="text-xs opacity-70">
-                      {categoryCounts[category.id] || 0} files
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
+                ))}
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
 
@@ -307,7 +536,7 @@ export default function ChatPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt,.md,.html,.htm"
+                  accept=".txt,.md,.html,.htm,.pdf,.docx"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
@@ -326,9 +555,6 @@ export default function ChatPage() {
                     <p className="text-lg font-medium">
                       Upload {activeC?.name} documents
                     </p>
-                    <p className="text-sm mt-2">
-                      Supported: .txt, .md, .html files
-                    </p>
                   </div>
                 )}
 
@@ -337,9 +563,12 @@ export default function ChatPage() {
                 ))}
 
                 {isLoading && (
-                  <div className="flex gap-2 items-center text-muted-foreground text-sm px-3">
-                    <div className="w-2 h-2 bg-muted-foreground/70 rounded-full animate-pulse"></div>
-                    <span>AI is typing…</span>
+                  <div className="flex gap-2 items-center px-3">
+                    <div className="mr-auto bg-secondary text-secondary-foreground rounded-xl p-3 shadow-sm flex gap-1 items-center">
+                      <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:0ms]" />
+                      <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:150ms]" />
+                      <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:300ms]" />
+                    </div>
                   </div>
                 )}
 
@@ -406,14 +635,25 @@ export default function ChatPage() {
                             <div className="text-xs text-muted-foreground">
                               {new Date(doc.created_at).toLocaleDateString()}
                             </div>
+                            <div className="flex gap-1 mt-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => viewDocument(doc.id, doc.filename)}
+                                className="h-7 text-xs gap-1">
+                                <Eye className="h-3 w-3" />
+                                View
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => deleteDocument(doc.id)}
+                                className="h-7 text-xs gap-1 text-destructive hover:text-destructive">
+                                <Trash2 className="h-3 w-3" />
+                                Delete
+                              </Button>
+                            </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteDocument(doc.id)}
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
                         </div>
                       </div>
                     ))}
@@ -424,6 +664,58 @@ export default function ChatPage() {
           </Card>
         )}
       </div>
+
+      {/* Document Viewer Modal */}
+      {viewingDocument && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <CardHeader className="border-b">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">{viewingDocument.filename}</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => {
+                      const isHtml = viewingDocument.file_type === 'html' || viewingDocument.file_type === 'htm';
+                      const mime = isHtml ? 'text/html' : 'text/plain';
+                      const blob = new Blob([viewingDocument.content], { type: mime });
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, '_blank');
+                      setTimeout(() => URL.revokeObjectURL(url), 30000);
+                    }}>
+                    <ExternalLink className="h-3 w-3" />
+                    Open in tab
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setViewingDocument(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-hidden p-0">
+              {(viewingDocument.file_type === 'html' || viewingDocument.file_type === 'htm') ? (
+                <iframe
+                  srcDoc={viewingDocument.content}
+                  className="w-full h-[60vh] border-0"
+                  sandbox="allow-same-origin"
+                  title={viewingDocument.filename}
+                />
+              ) : (
+                <ScrollArea className="h-[60vh] p-6">
+                  <pre className="whitespace-pre-wrap text-sm font-mono">
+                    {viewingDocument.content}
+                  </pre>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </main>
   );
 }
@@ -441,7 +733,15 @@ function ChatBubble({ message }: { message: ChatMessage }) {
             ? "ml-auto bg-blue-600 text-white"
             : "mr-auto bg-secondary text-secondary-foreground"
         )}>
-        <div className="whitespace-pre-wrap">{message.content}</div>
+        {message.content ? (
+          <div className="whitespace-pre-wrap">{message.content}</div>
+        ) : (
+          <div className="flex gap-1 items-center py-1 px-1">
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:0ms]" />
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:150ms]" />
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:300ms]" />
+          </div>
+        )}
       </div>
 
       {!isUser && message.sources && message.sources.length > 0 && (
