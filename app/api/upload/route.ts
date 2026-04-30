@@ -42,30 +42,10 @@ async function extractTextFromDocx(buffer: Buffer): Promise<string> {
 }
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs") as any;
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "";
-
-  const loadingTask = pdfjsLib.getDocument({
-    data: new Uint8Array(buffer),
-    useWorkerFetch: false,
-    isEvalSupported: false,
-    useSystemFonts: true,
-  });
-
-  const pdfDoc = await loadingTask.promise;
-  const textParts: string[] = [];
-
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = content.items.map((item: any) => ("str" in item ? item.str : "")).join(" ");
-    textParts.push(pageText);
-    page.cleanup();
-  }
-
-  await pdfDoc.destroy();
-  return textParts.join(" ").replace(/\s+/g, " ").trim();
+  const { getDocumentProxy, extractText } = await import("unpdf");
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const { text } = await extractText(pdf, { mergePages: true });
+  return (text as string).replace(/\s+/g, " ").trim();
 }
 
 function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
