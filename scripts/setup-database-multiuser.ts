@@ -1,6 +1,3 @@
-// scripts/setup-database-multiuser.ts
-// Enhanced database setup for multi-user file uploads
-
 import { neon } from '@neondatabase/serverless';
 import * as dotenv from 'dotenv';
 
@@ -15,7 +12,7 @@ async function setupDatabase() {
 
   const sql = neon(databaseUrl);
 
-  console.log('\n🚀 Setting up Multi-User Neon database...\n');
+  console.log('\nSetting up Multi-User Neon database...\n');
 
   try {
     console.log('1. Enabling pgvector extension...');
@@ -84,15 +81,15 @@ async function setupDatabase() {
     `;
     console.log('   ✓ Done\n');
 
-    console.log('✅ Database setup complete!\n');
-    console.log('📊 Schema created:');
+    console.log('Database setup complete!\n');
+    console.log('Schema created:');
     console.log('   - users (session-based user tracking)');
     console.log('   - documents (user-specific file storage)');
     console.log('   - document_chunks (user-specific text chunks with embeddings)');
     console.log('   - Indexes for fast vector similarity search\n');
 
   } catch (error) {
-    console.error('❌ Error setting up database:', error);
+    console.error('Error setting up database:', error);
     throw error;
   }
 }

@@ -12,7 +12,6 @@ export async function GET(req: NextRequest) {
     
     const sql = neon(process.env.DATABASE_URL!);
     
-    // Get user ID
     const userResult = await sql`
       SELECT id FROM users WHERE session_id = ${sessionId}
     ` as Array<{ id: number }>;

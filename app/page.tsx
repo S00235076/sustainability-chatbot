@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Upload, FileText, Trash2, X, Leaf, Heart, DollarSign, Plus, Eye, ExternalLink } from "lucide-react";
+import { Upload, FileText, Trash2, X, Leaf, Heart, DollarSign, Plus, Eye, ExternalLink, Moon, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 type Source = {
@@ -82,6 +82,17 @@ export default function ChatPage() {
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [viewingDocument, setViewingDocument] = useState<{ id: number; filename: string; content: string; file_type: string } | null>(null);
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("darkMode") === "true";
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    localStorage.setItem("darkMode", String(darkMode));
+  }, [darkMode]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -100,11 +111,11 @@ export default function ChatPage() {
 
   const loadCustomCategories = async () => {
     try {
-      // Load locally stored custom categories (persists before docs are uploaded)
+      // Load locally stored custom categories 
       const storedRaw = localStorage.getItem(`customCategories_${sessionId}`);
       const stored: Array<{ id: string; name: string }> = storedRaw ? JSON.parse(storedRaw) : [];
 
-      // Also fetch from DB to pick up categories from other sessions / after reload
+      // Also fetch from DB to pick up categories from other sessions / after reloads
       const response = await fetch(`/api/categories?sessionId=${sessionId}`);
       const data = await response.json();
 
@@ -174,7 +185,7 @@ export default function ChatPage() {
       const data = await response.json();
 
       if (data.success) {
-        // Persist to localStorage so it survives reloads and useEffect re-runs
+        // Persist to localStorage so it survives reloads
         const storedRaw = localStorage.getItem(`customCategories_${sessionId}`);
         const stored: Array<{ id: string; name: string }> = storedRaw ? JSON.parse(storedRaw) : [];
         if (!stored.find((c) => c.id === data.categoryId)) {
@@ -288,7 +299,7 @@ export default function ChatPage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: `❌ Error uploading file: ${error instanceof Error ? error.message : "Unknown error"}`,
+          content: `Error uploading file: ${error instanceof Error ? error.message : "Unknown error"}`,
           timestamp: Date.now(),
         },
       ]);
@@ -516,6 +527,13 @@ export default function ChatPage() {
                 </div>
               </div>
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDarkMode(!darkMode)}
+                  title={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
+                  {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -749,7 +767,6 @@ function ChatBubble({ message }: { message: ChatMessage }) {
           <button
             onClick={() => setShowSources(!showSources)}
             className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2">
-            <span>📚</span>
             <span className="underline">
               {showSources ? "Hide" : "Show"} {message.sources.length} source(s)
             </span>

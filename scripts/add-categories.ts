@@ -56,14 +56,14 @@ async function addCategories() {
       console.log('   ✓ Indexes already exist\n');
     }
 
-    console.log('✅ Category support added!\n');
-    console.log('📊 Your database now supports:');
-    console.log('   - Multiple categories per user');
-    console.log('   - Category-specific document uploads');
-    console.log('   - Category-filtered queries\n');
+    console.log(' Category support added!\n');
+    console.log(' Your database now supports:');
+    console.log(' Multiple categories per user');
+    console.log(' Category-specific document uploads');
+    console.log(' Category-filtered queries\n');
 
   } catch (error) {
-    console.error('❌ Error adding categories:', error);
+    console.error('Error adding categories:', error);
     throw error;
   }
 }

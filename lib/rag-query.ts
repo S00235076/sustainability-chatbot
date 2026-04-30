@@ -60,7 +60,7 @@ export async function getRelevantContext(
   const sources = results.map((row) => ({
     filename: row.filename,
     similarity: parseFloat(row.similarity),
-    excerpt: row.chunk_text, // Include the actual text chunk
+    excerpt: row.chunk_text, 
   }));
   
   return { context, sources };
