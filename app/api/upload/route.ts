@@ -3,7 +3,6 @@ import { neon } from "@neondatabase/serverless";
 import OpenAI from "openai";
 import * as cheerio from "cheerio";
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -43,6 +42,7 @@ async function extractTextFromDocx(buffer: Buffer): Promise<string> {
 }
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   const result = await parser.getText();
   await parser.destroy();
