@@ -1,6 +1,3 @@
-// scripts/migrate-to-multiuser.ts
-// Drop old tables and create new multi-user schema
-
 import { neon } from '@neondatabase/serverless';
 import * as dotenv from 'dotenv';
 

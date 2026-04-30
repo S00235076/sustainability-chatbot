@@ -40,7 +40,6 @@ CITATION RULES:
 - Only cite sources you actually use in your answer
 - Do not invent information not present in the context`;
 
-    // History first, then current question with injected context — correct ordering
     const messagesWithContext = [
       { role: "system" as const, content: enhancedSystemPrompt },
       ...messages.slice(0, -1).slice(-6),

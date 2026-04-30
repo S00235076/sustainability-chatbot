@@ -22,7 +22,6 @@ export async function GET(req: NextRequest) {
     
     const userId = userResult[0].id;
     
-    // Get documents, optionally filtered by category
     let documents;
     if (category) {
       documents = await sql`
@@ -123,7 +122,6 @@ export async function DELETE(req: NextRequest) {
   }
 }
 
-// New endpoint to get category counts
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();

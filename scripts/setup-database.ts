@@ -1,5 +1,3 @@
-// Run once to create database tables
-
 import { neon } from '@neondatabase/serverless';
 import * as dotenv from 'dotenv';
 

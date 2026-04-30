@@ -42,11 +42,30 @@ async function extractTextFromDocx(buffer: Buffer): Promise<string> {
 }
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buffer });
-  const result = await parser.getText();
-  await parser.destroy();
-  return result.text.replace(/\s+/g, ' ').trim();
+  
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs") as any;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(buffer),
+    useWorkerFetch: false,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  });
+
+  const pdfDoc = await loadingTask.promise;
+  const textParts: string[] = [];
+
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const page = await pdfDoc.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item: any) => ("str" in item ? item.str : "")).join(" ");
+    textParts.push(pageText);
+    page.cleanup();
+  }
+
+  await pdfDoc.destroy();
+  return textParts.join(" ").replace(/\s+/g, " ").trim();
 }
 
 function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
@@ -114,14 +133,12 @@ export async function POST(req: NextRequest) {
     
     const chunks = chunkText(extractedText);
 
-    // Batch all chunk embeddings in a single API call
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: chunks,
     });
     const embeddings = embeddingResponse.data.map((e) => e.embedding);
 
-    // Insert all chunks in parallel
     await Promise.all(
       chunks.map((chunk, i) =>
         sql`
